@@ -1,6 +1,7 @@
 .data
     fin:	.asciiz		"/home/bcthanh/Documents/input_matrix.txt"
     fout:	.asciiz		"/home/bcthanh/Documents/output_matrix.txt"
+    invalid_msg: .asciiz	"Error! Kernel size is larger than the padded image matrix.\n"
     descriptor:  	.word   	4
 
     N: 	         	.space  	4	
@@ -14,9 +15,10 @@
     output_size:	.word		4
     
     buffer:      	.space  	1024			
-    char:        	.space  	1
+    character:        	.space  	1
     space:		.asciiz		" "
     newline:        	.asciiz 	"\n"
+    
 .text
     # Open "input matrix.txt"
     li $v0, 13
@@ -122,7 +124,7 @@
     syscall
     
     # end program
-    addi $v0, $zero, 10
+    li $v0, 10
     syscall
 # -------------------------------------------------------------------------------------------
 # ---------------------------------------- Functions ----------------------------------------
@@ -132,7 +134,7 @@ read_float:
     # Use: a0, a1, a2, v0, t0-t3, f1-f2
 
     # Save registers on stack
-    addi $sp, $sp, -40
+    subi $sp, $sp, 40
     sw $a0, 0($sp)
     sw $a1, 4($sp)
     sw $a2, 8($sp)
@@ -159,12 +161,12 @@ read_float:
     	# Read one character
     	addi $v0, $zero, 14      # Syscall: read character
     	lw $a0, descriptor       # File descriptor
-    	la $a1, char             # Buffer for one character
+    	la $a1, character             # Buffer for one character
     	addi $a2, $zero, 1       # Read 1 byte
     	syscall
 
     	# Load character into t2
-    	lb $t2, char
+    	lb $t2, character
     	beq $t2, ' ', read_float_end_loop
     	beq $t2, '\n', read_float_end_loop
     	beq $t2, '\0', read_float_end_loop
@@ -231,7 +233,7 @@ read_image:
     # Use: a0, s0, s1, t0, t1, t2, t3, t4, f0
 
     # Adjust the stack for saving registers
-    addi $sp, $sp, -48               # Reserve space for 12 registers (12 * 4 bytes)
+    subi $sp, $sp, 48               # Reserve space for 12 registers (12 * 4 bytes)
 
     # Save registers on the stack
     sw $a0, 0($sp)                 # Save $a0
@@ -254,15 +256,17 @@ read_image:
     la $a0, image                  # Load image address into $a0
     lw $t0, N                      # Load n value (image size) into $t0
     lw $t1, p                      # Load p value (offset) into $t1
-    mul $t1, $t1, 2                # Multiply p by 2 (to adjust offset)
+
+    sll $t1, $t1, 1                # Multiply p by 2 (to adjust offset)
     add $t0, $t0, $t1              # Add p*2 to n
-    mul $t0, $t0, 4                # Multiply by 4 to account for element size
+    
+    sll $t0, $t0, 2                # Multiply by 4 to account for element size
     add $t0, $a0, $t0              # Add base address to the offset
 
     # Clear image array
     clear_image_loop:
         beq $t0, $a0, end_clear_image_loop
-        addi $t0, $t0, -4                # Move pointer to next element
+        subi $t0, $t0, 4                # Move pointer to next element
         sw $zero, 0($t0)                 # Set the memory value to zero
         j clear_image_loop       # Repeat loop
 
@@ -273,7 +277,7 @@ read_image:
     lw $t0, N                        # Reload n value
     lw $s0, p                        # Reload p value
     addi $s1, $s0, 0                 # Copy p to s1
-    mul $s0, $s0, 2                  # Multiply p by 2
+    sll $s0, $s0, 1                  # Multiply p by 2
     add $s0, $t0, $s0                # Add p*2 to n
 
     # Initialize outer loop counter
@@ -291,7 +295,7 @@ read_image:
             mul $t3, $t3, $s0           # Multiply by (n + p*2)
             add $t3, $t3, $t2           # Add column offset
             add $t3, $t3, $s1           # Add p*2 offset
-            mul $t3, $t3, 4             # Multiply by 4 (size of each element)
+            sll $t3, $t3, 2             # Multiply by 4 (size of each element)
             add $t3, $a0, $t3           # Calculate final memory address for element
             
             jal read_float              # Call read_float function to read float value
@@ -324,13 +328,13 @@ read_image:
     lw $s1, 8($sp)
     lw $s0, 4($sp)
     lw $a0, 0($sp)
-    addi $sp, $sp, 40       
+    addi $sp, $sp, 48       
     jr $ra                 
 
 # ___________________________________________________________________________________________
 read_kernel:
     # Lưu các thanh ghi cần thiết
-    addi $sp, $sp, -32         # Tạo không gian trên stack
+    subi $sp, $sp, 32         # Tạo không gian trên stack
     sw $ra, 28($sp)            # Lưu giá trị $ra
     sw $a0, 24($sp)            # Lưu giá trị $a0
     sw $t0, 20($sp)
@@ -468,7 +472,7 @@ convolution:
      		# Store the result into the output matrix
     		mul $t6, $t4, $t2
     		add $t6, $t6, $t5
-    		mul $t6, $t6, 4
+    		sll $t6, $t6, 2
     		add $t6, $a2, $t6
     		swc1 $f0, 0($t6)  # Store the floating-point result
 
@@ -501,30 +505,21 @@ write_float:
     # write float value stored in f0 to file
     # Use: a0, a1, a2, v0, t0, t1, t2, t3, t4, f0, f1
     # Store registers
-    addi $sp, $sp, -4
-    sw $a0, 0($sp)
-    addi $sp, $sp, -4
-    sw $a1, 0($sp)
-    addi $sp, $sp, -4
-    sw $a2, 0($sp)
-    addi $sp, $sp, -4
-    sw $v0, 0($sp)
-    addi $sp, $sp, -4
-    sw $t0, 0($sp)
-    addi $sp, $sp, -4
-    sw $t1, 0($sp)
-    addi $sp, $sp, -4
-    sw $t2, 0($sp)
-    addi $sp, $sp, -4
-    sw $t3, 0($sp)
-    addi $sp, $sp, -4
-    sw $t4, 0($sp)
-    addi $sp, $sp, -4 
+    subi $sp, $sp, 44
+    sw $a0, 40($sp)
+    sw $a1, 36($sp)
+    sw $a2, 32($sp)
+    sw $v0, 28($sp)
+    sw $t0, 24($sp)
+    sw $t1, 20($sp)
+    sw $t2, 16($sp)
+    sw $t3, 12($sp)
+    sw $t4, 8($sp)
     mfc1 $t0, $f0
-    sw $t0, 0($sp)
-    addi $sp, $sp, -4 
+    sw $t0, 4($sp)
     mfc1 $t0, $f1
     sw $t0, 0($sp)
+    
     # Handle
     la $a0, buffer
     addi $t0, $zero, 0
@@ -603,27 +598,17 @@ write_float:
     # Restore registers
     lw $t0, 0($sp)
     mtc1 $t0, $f1
-    addi $sp, $sp, 4
-    lw $t0, 0($sp)
+    lw $t0, 4($sp)
     mtc1 $t0, $f0
-    addi $sp, $sp, 4
-    lw $t4, 0($sp)
-    addi $sp, $sp, 4
-    lw $t3, 0($sp)
-    addi $sp, $sp, 4
-    lw $t2, 0($sp)
-    addi $sp, $sp, 4
-    lw $t1, 0($sp)
-    addi $sp, $sp, 4
-    lw $t0, 0($sp)
-    addi $sp, $sp, 4
-    lw $v0, 0($sp)
-    addi $sp, $sp, 4
-    lw $a2, 0($sp)
-    addi $sp, $sp, 4
-    lw $a1, 0($sp)
-    addi $sp, $sp, 4
-    lw $a0, 0($sp)
-    addi $sp, $sp, 4
+    lw $t4, 8($sp)
+    lw $t3, 12($sp)
+    lw $t2, 16($sp)
+    lw $t1, 20($sp)
+    lw $t0, 24($sp)
+    lw $v0, 28($sp)
+    lw $a2, 32($sp)
+    lw $a1, 36($sp)
+    lw $a0, 40($sp)
+    addi $sp, $sp, 44
     jr $ra
 # ___________________________________________________________________________________________
